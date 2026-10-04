@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Attrition Analytics & Retention Intelligence Platform</title>
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js & PapaParse CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <!-- Header Section -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="brand-icon">👥</div>
+                <div class="brand-text">
+                    <h1>Employee Attrition Analytics & Retention Intelligence</h1>
+                    <p>Workforce Turnover Drivers, Statistical Relationship Tests, Privacy Vault & What-If ML Simulator</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="privacy-indicator-badge" id="privacyStatusBadge">
+                    <span class="status-dot"></span>
+                    <span id="privacyStatusText">🛡️ PII Masked & Hash Secured</span>
+                </div>
+                <button class="btn btn-secondary" onclick="App.openUploadModal()">
+                    📤 Upload Custom Data
+                </button>
+                <button class="btn btn-secondary" onclick="App.toggleAnonymization()">
+                    👁️ Toggle PII Masking
+                </button>
+                <button class="btn btn-primary" onclick="App.exportReportCSV()">
+                    ⬇️ Export Insights CSV
+                </button>
+            </div>
+        </header>
+
+        <!-- Global Interactive Filter Bar -->
+        <section class="filter-bar">
+            <div class="filter-group">
+                <div class="filter-item">
+                    <label for="filterDepartment">Department</label>
+                    <select id="filterDepartment" class="select-input" onchange="App.applyFilters()">
+                        <option value="all" selected>All Departments (8)</option>
+                        <option value="Engineering">Engineering</option>
+                        <option value="Sales">Sales</option>
+                        <option value="Customer Support">Customer Support</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="HR">HR</option>
+                        <option value="Product">Product</option>
+                        <option value="Operations">Operations</option>
+                        <option value="Finance">Finance</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label for="filterTenureBand">Tenure Band</label>
+                    <select id="filterTenureBand" class="select-input" onchange="App.applyFilters()">
+                        <option value="all">All Tenure Bands</option>
+                        <option value="<6 Months">&lt; 6 Months</option>
+                        <option value="6-12 Months">6 - 12 Months</option>
+                        <option value="1-2 Years">1 - 2 Years</option>
+                        <option value="2-5 Years">2 - 5 Years</option>
+                        <option value="5+ Years">5+ Years</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label for="filterJobLevel">Job Level</label>
+                    <select id="filterJobLevel" class="select-input" onchange="App.applyFilters()">
+                        <option value="all">All Job Levels</option>
+                        <option value="L1 - Entry">L1 - Entry</option>
+                        <option value="L2 - Mid">L2 - Mid</option>
+                        <option value="L3 - Senior">L3 - Senior</option>
+                        <option value="L4 - Lead">L4 - Lead</option>
+                        <option value="L5 - Executive">L5 - Executive</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label for="filterPerformance">Performance Rating</label>
+                    <select id="filterPerformance" class="select-input" onchange="App.applyFilters()">
+                        <option value="all">All Ratings (1 - 5)</option>
+                        <option value="1">1 - Needs Improvement</option>
+                        <option value="2">2 - Meets Minimum</option>
+                        <option value="3">3 - Solid Performer</option>
+                        <option value="4">4 - High Performer</option>
+                        <option value="5">5 - Outstanding</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label for="filterOvertime">Overtime Requirement</label>
+                    <select id="filterOvertime" class="select-input" onchange="App.applyFilters()">
+                        <option value="all">All Employees</option>
+                        <option value="Yes">Overtime Required (Yes)</option>
+                        <option value="No">No Overtime (No)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <button class="btn btn-secondary" onclick="App.resetFilters()">
+                    🔄 Reset Filters
+                </button>
+            </div>
+        </section>
+
+        <!-- Executive Navigation Tabs -->
+        <nav class="tabs-navigation">
+            <button class="tab-btn active" onclick="App.switchTab('tab-overview')">
+                📊 Executive Overview
+            </button>
+            <button class="tab-btn" onclick="App.switchTab('tab-drivers')">
+                🔍 Cohort & Driver Analysis
+            </button>
+            <button class="tab-btn" onclick="App.switchTab('tab-stats')">
+                🧪 Statistical & Regression Lab
+            </button>
+            <button class="tab-btn" onclick="App.switchTab('tab-privacy')">
+                🛡️ Data Privacy & Quality Vault
+            </button>
+            <button class="tab-btn" onclick="App.switchTab('tab-simulator')">
+                🎯 Predictive Risk & Simulator
+            </button>
+            <button class="tab-btn" onclick="App.switchTab('tab-explorer')">
+                📋 Workforce Record Explorer
+            </button>
+        </nav>
+
+        <!-- TAB 1: EXECUTIVE OVERVIEW -->
+        <div id="tab-overview" class="tab-pane active">
+            
+            <!-- KPI Cards Grid -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Overall Attrition Rate</span>
+                        <div class="kpi-icon">🚪</div>
+                    </div>
+                    <div class="kpi-value" id="kpiOverallAttrition">--%</div>
+                    <div class="kpi-footer">
+                        <span class="trend-badge danger" id="kpiOverallBadge">High Turnover</span>
+                        <span id="kpiOverallSubtext">0 Departed / 0 Total</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Early-Tenure Attrition (&lt;1 Yr)</span>
+                        <div class="kpi-icon">⏳</div>
+                    </div>
+                    <div class="kpi-value" id="kpiEarlyTenure">--%</div>
+                    <div class="kpi-footer">
+                        <span class="trend-badge warning" id="kpiEarlyBadge">Onboarding Risk</span>
+                        <span>Turnover in first 12 months</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Regrettable High-Performer Loss</span>
+                        <div class="kpi-icon">⭐</div>
+                    </div>
+                    <div class="kpi-value" id="kpiRegrettable">--%</div>
+                    <div class="kpi-footer">
+                        <span class="trend-badge danger" id="kpiRegrettableBadge">Talent Drain</span>
+                        <span id="kpiRegrettableSubtext">Rating 4 & 5 departures</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Est. Financial Turnover Impact</span>
+                        <div class="kpi-icon">💸</div>
+                    </div>
+                    <div class="kpi-value" id="kpiTurnoverCost">$0</div>
+                    <div class="kpi-footer">
+                        <span class="trend-badge warning">1.5x Salary Multiplier</span>
+                        <span>Replacement & hiring cost</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overview Charts Grid -->
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>📈 Monthly Attrition Trend (Past 12 Months)</h3>
+                        <span class="card-subtitle">Voluntary vs Involuntary Departures</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartMonthlyTrend"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🏢 Attrition Rate by Department</h3>
+                        <span class="card-subtitle">% Departed per Department</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartDeptAttrition"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>⏱️ Tenure Band Attrition Curve</h3>
+                        <span class="card-subtitle">Vulnerability by Service Months</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartTenureCurve"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>⚖️ Voluntary vs Involuntary Split</h3>
+                        <span class="card-subtitle">Exit Type Breakdown</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartExitType"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- TAB 2: DRIVERS & COHORT ANALYSIS -->
+        <div id="tab-drivers" class="tab-pane">
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🔥 Overtime & Burnout Matrix</h3>
+                        <span class="card-subtitle">Attrition % by Overtime & Monthly Hours</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartOvertimeBurnout"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🎯 Satisfaction Radar Profile</h3>
+                        <span class="card-subtitle">Stayed vs Departed Satisfaction Scores</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartSatisfactionRadar"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>💰 Compensation Ratio (Pay Parity) vs Attrition</h3>
+                        <span class="card-subtitle">Salary Ratio (0.8 = Underpaid, 1.2 = Premium)</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartCompScatter"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>📅 Promotion Stagnation & Regrettable Risk</h3>
+                        <span class="card-subtitle">Years Since Last Promotion vs High Performers</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chartPromotionStagnation"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: STATISTICAL & REGRESSION LAB -->
+        <div id="tab-stats" class="tab-pane">
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>📐 Chi-Square Test of Independence</h3>
+                        <span class="card-subtitle">Categorical Driver Significance (p &lt; 0.05)</span>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Feature Driver</th>
+                                    <th>Chi-Square (&chi;&sup2;)</th>
+                                    <th>d.f.</th>
+                                    <th>p-value</th>
+                                    <th>Cramer's V</th>
+                                    <th>Statistical Result</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableChiSquare">
+                                <!-- JS populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🔬 Welch's Two-Sample t-Test</h3>
+                        <span class="card-subtitle">Continuous Metric Means (Active vs Departed)</span>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Active Mean</th>
+                                    <th>Departed Mean</th>
+                                    <th>Diff</th>
+                                    <th>t-Stat</th>
+                                    <th>p-value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableTTest">
+                                <!-- JS populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-1-2">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🤖 Logistic Regression ML Summary</h3>
+                        <span class="card-subtitle">Multi-Variable Predictive Model</span>
+                    </div>
+                    <div class="impact-box" style="margin-top:0;">
+                        <div class="impact-row">
+                            <span>Model Accuracy</span>
+                            <span class="value" id="mlAccuracy">--%</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Precision</span>
+                            <span class="value" id="mlPrecision">--%</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Recall (Catching Attrition)</span>
+                            <span class="value" id="mlRecall">--%</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>F1 Score</span>
+                            <span class="value" id="mlF1">--</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>ROC-AUC Score</span>
+                            <span class="value" id="mlAUC" style="color:var(--accent-cyan);">--</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px;">
+                        <h4 style="font-size:13px; margin-bottom:8px;">Model ROC Curve</h4>
+                        <div class="chart-container" style="min-height: 200px;">
+                            <canvas id="chartROC"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>📊 Feature Coefficients & Odds Ratios</h3>
+                        <span class="card-subtitle">Log-Odds (&beta;) & Multiplicative Risk Impact</span>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Feature Name</th>
+                                    <th>Coeff (&beta;)</th>
+                                    <th>Odds Ratio</th>
+                                    <th>Z-Score</th>
+                                    <th>p-value</th>
+                                    <th>Risk Impact</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableRegressionCoeffs">
+                                <!-- JS populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: DATA PRIVACY & QUALITY VAULT -->
+        <div id="tab-privacy" class="tab-pane">
+            <div class="grid-2col">
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🛡️ PII Masking & Data Privacy Safeguards</h3>
+                        <span class="card-subtitle">GDPR & HR Anonymization Protocol</span>
+                    </div>
+                    <div style="font-size: 13px; line-height: 1.6; color: var(--text-muted); margin-bottom: 16px;">
+                        <p style="margin-bottom:10px;">To protect employee privacy and prevent identification, personal identifiable information (PII) is automatically redacted or hashed prior to analytics reporting.</p>
+                        <ul style="padding-left: 20px;">
+                            <li><strong>Name, Email, Phone & SSN:</strong> Redacted/Stripped from reporting data.</li>
+                            <li><strong>Employee ID:</strong> Cryptographically hashed using salted SHA-256 algorithm.</li>
+                            <li><strong>Age Binning:</strong> Continuous ages grouped into 10-year brackets.</li>
+                        </ul>
+                    </div>
+
+                    <div style="display:flex; gap:12px; margin-top:16px;">
+                        <button class="btn btn-primary" onclick="App.toggleAnonymization()">
+                            🔒 Toggle Privacy Masking
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🔑 Salted ID Hashing Utility</h3>
+                        <span class="card-subtitle">Test Employee ID Anonymization</span>
+                    </div>
+                    <div class="filter-item" style="margin-bottom: 12px;">
+                        <label>Enter Raw Employee ID</label>
+                        <input type="text" id="hashInputId" class="search-input" value="EMP-10492" style="width:100%;">
+                    </div>
+                    <button class="btn btn-secondary" onclick="App.testHashId()" style="margin-bottom: 14px;">
+                        ⚡ Generate Anonymized Hash
+                    </button>
+                    <div class="impact-box" style="margin-top:0;">
+                        <div class="impact-row">
+                            <span>Anonymized Identifier</span>
+                            <span class="value" id="hashOutputResult" style="color:var(--accent-emerald);">ANON-7F3A9C10</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <div class="card-title-bar">
+                    <h3>🧹 Data Quality & Sanitization Log</h3>
+                    <span class="card-subtitle">Validation Rules & Anomaly Detection</span>
+                </div>
+                <div class="log-box" id="privacyLogBox">
+                    [SYSTEM INIT] 1,800 Employee records loaded.
+                    [QUALITY CHECK] Passed 1,800 rows with 100% validity.
+                    [PRIVACY VAULT] PII fields (Name, Email, Phone, SSN) masked successfully.
+                    [HASHING] Employee IDs converted to 8-character salted hex strings.
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: PREDICTIVE SIMULATOR & INTERVENTIONS -->
+        <div id="tab-simulator" class="tab-pane">
+            <div class="grid-1-2">
+                <!-- Controls -->
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>🎯 Individual Attrition Risk Predictor</h3>
+                        <span class="card-subtitle">Select Employee to Simulate Retention Plan</span>
+                    </div>
+
+                    <div class="filter-item" style="margin-bottom: 16px;">
+                        <label for="simEmployeeSelect">Select Target Employee Record</label>
+                        <select id="simEmployeeSelect" class="select-input" style="width:100%;" onchange="App.onSelectSimEmployee()">
+                            <!-- JS Populated -->
+                        </select>
+                    </div>
+
+                    <div class="impact-box" style="margin-bottom: 20px; margin-top:0;">
+                        <div class="impact-row">
+                            <span>Department & Role</span>
+                            <span class="value" id="simEmpDept">--</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Current Comp Ratio</span>
+                            <span class="value" id="simEmpComp">--</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Overtime Status</span>
+                            <span class="value" id="simEmpOT">--</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Base Attrition Risk</span>
+                            <span class="value" id="simBaseRiskPct" style="color:var(--accent-rose);">--%</span>
+                        </div>
+                    </div>
+
+                    <h4 style="font-size:14px; font-weight:700; margin-bottom:14px;">🎛️ Interactive Retention What-If Sliders</h4>
+
+                    <div class="slider-control">
+                        <div class="slider-label">
+                            <span>Target Comp Ratio (Pay Parity)</span>
+                            <span class="value" id="sliderValComp">1.00</span>
+                        </div>
+                        <input type="range" id="sliderComp" class="range-input" min="0.80" max="1.35" step="0.05" value="1.00" oninput="App.updateSimulation()">
+                    </div>
+
+                    <div class="slider-control">
+                        <div class="slider-label">
+                            <span>Require Overtime</span>
+                            <span class="value" id="sliderValOT">No</span>
+                        </div>
+                        <select id="sliderOT" class="select-input" style="width:100%;" onchange="App.updateSimulation()">
+                            <option value="No">No (Reduce Burnout)</option>
+                            <option value="Yes">Yes (Mandatory Overtime)</option>
+                        </select>
+                    </div>
+
+                    <div class="slider-control">
+                        <div class="slider-label">
+                            <span>Target Work-Life Balance Rating</span>
+                            <span class="value" id="sliderValWLB">4 / 5</span>
+                        </div>
+                        <input type="range" id="sliderWLB" class="range-input" min="1" max="5" step="1" value="4" oninput="App.updateSimulation()">
+                    </div>
+
+                    <div class="slider-control">
+                        <div class="slider-label">
+                            <span>Job Satisfaction Enhancement</span>
+                            <span class="value" id="sliderValSat">4 / 5</span>
+                        </div>
+                        <input type="range" id="sliderSat" class="range-input" min="1" max="5" step="1" value="4" oninput="App.updateSimulation()">
+                    </div>
+                </div>
+
+                <!-- Simulation Output -->
+                <div class="glass-card">
+                    <div class="card-title-bar">
+                        <h3>📊 Simulated Retention Impact & Financial ROI</h3>
+                        <span class="card-subtitle">Real-time Risk Reduction & Cost-Benefit Model</span>
+                    </div>
+
+                    <div class="grid-2col" style="margin-bottom: 20px;">
+                        <div style="background:var(--bg-secondary); padding:20px; border-radius:var(--radius-md); text-align:center; border:1px solid var(--border-color);">
+                            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Base Attrition Risk</div>
+                            <div id="simDisplayBaseRisk" style="font-size:36px; font-weight:800; color:var(--accent-rose); margin:10px 0;">--%</div>
+                            <span class="badge badge-danger" id="simDisplayBaseBadge">High Risk</span>
+                        </div>
+
+                        <div style="background:var(--bg-secondary); padding:20px; border-radius:var(--radius-md); text-align:center; border:1px solid var(--border-active);">
+                            <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Simulated Attrition Risk</div>
+                            <div id="simDisplayNewRisk" style="font-size:36px; font-weight:800; color:var(--accent-emerald); margin:10px 0;">--%</div>
+                            <span class="badge badge-success" id="simDisplayNewBadge">Retained</span>
+                        </div>
+                    </div>
+
+                    <div class="impact-box">
+                        <h4 style="font-size:14px; font-weight:700; margin-bottom:12px;">💰 Financial ROI & Cost Breakdown</h4>
+                        <div class="impact-row">
+                            <span>Estimated Turnover Replacement Cost Saved</span>
+                            <span class="value" id="simSavings" style="color:var(--accent-emerald);">$0</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Annual Compensation Increase Cost</span>
+                            <span class="value" id="simSalaryCost" style="color:var(--accent-rose);">$0</span>
+                        </div>
+                        <div class="impact-row">
+                            <span>Net Retention ROI (Net Savings)</span>
+                            <span class="value" id="simNetROI" style="color:var(--accent-cyan); font-size:18px;">$0</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h4 style="font-size:14px; font-weight:700; margin-bottom:10px;">📋 Actionable Intervention Recommendations</h4>
+                        <div id="interventionRecommendationsList" style="display:flex; flex-direction:column; gap:10px;">
+                            <!-- JS Populated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 6: WORKFORCE RECORD EXPLORER -->
+        <div id="tab-explorer" class="tab-pane">
+            <div class="glass-card">
+                <div class="card-title-bar">
+                    <h3>📋 Workforce Master Dataset Explorer</h3>
+                    <div style="display:flex; gap:12px;">
+                        <input type="text" id="tableSearchInput" class="search-input" placeholder="🔍 Search records..." oninput="App.renderTable()">
+                        <button class="btn btn-secondary" onclick="App.exportReportCSV()">⬇️ Export Filtered CSV</button>
+                    </div>
+                </div>
+
+                <div class="data-table-container" style="max-height: 540px; overflow-y: auto;">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Emp ID</th>
+                                <th>Dept</th>
+                                <th>Role & Level</th>
+                                <th>Tenure</th>
+                                <th>Salary</th>
+                                <th>Comp Ratio</th>
+                                <th>Perf. Rating</th>
+                                <th>Overtime</th>
+                                <th>Exit Status</th>
+                                <th>Risk Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableMasterExplorer">
+                            <!-- JS Populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL 1: UPLOAD CUSTOM DATA -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>📤 Upload Custom Employee Dataset</h3>
+                <button class="modal-close" onclick="App.closeUploadModal()">&times;</button>
+            </div>
+            <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+                Upload a CSV file with columns: <code>employee_id, department, role, tenure_months, monthly_salary, comp_ratio, performance_rating, overtime_status, exit_status</code>.
+            </p>
+            <input type="file" id="csvFileInput" accept=".csv" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button class="btn btn-secondary" onclick="App.closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="App.handleCSVUpload()">Parse & Process CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="data_engine.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
