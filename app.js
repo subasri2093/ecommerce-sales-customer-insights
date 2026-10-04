@@ -1,715 +1,540 @@
 /**
- * E-commerce Sales & Customer Insights Analytics - Application Controller & Chart Engine
+ * Employee Attrition Analytics - Application Controller & Chart Engine
  */
 
 const App = (() => {
     // Application State Variables
-    let rawDataset = null;
-    let cleanDataset = null;
-    let filteredOrderItems = [];
-    let currentKPIs = null;
-    let monthlyTrends = [];
-    let cohortMatrix = [];
-    let rfmData = null;
-    let productAnalytics = null;
-    let regionalAnalytics = [];
-    let recommendations = [];
+    let rawDataset = [];
+    let processedDataset = [];
+    let filteredDataset = [];
+    let mlModel = null;
     let chartInstances = {};
+    let isPIIMasked = true;
+    let selectedSimEmployee = null;
 
     // Initialization
     function init() {
-        console.log('[APP] Initializing E-Commerce Sales & Customer Insights Analytics Platform...');
+        console.log('[APP] Initializing Employee Attrition Analytics Platform...');
 
-        // 1. Generate multi-relational synthetic dataset (Jan 2024 - Sep 2025)
-        rawDataset = DataEngine.generateSyntheticDataset(101);
+        // 1. Generate 1,800 synthetic workforce records
+        rawDataset = DataEngine.generateDataset(1800, 42);
 
-        // 2. Execute Data Quality Cleaning & Normalization Pipeline
-        cleanDataset = DataEngine.cleanAndNormalizeDataset(rawDataset);
+        // 2. Data Cleaning & Quality Check
+        const cleanResult = DataEngine.cleanAndValidateRecords(rawDataset);
+        processedDataset = cleanResult.cleanRecords;
 
-        // 3. Update Data Health Score badge in header
-        updateDataHealthBadge();
+        // 3. Fit Logistic Regression ML Solver
+        mlModel = DataEngine.fitLogisticRegression(processedDataset);
 
-        // 4. Apply initial filters & calculate metrics
+        // 4. Populate simulator employee dropdown
+        populateSimulatorDropdown();
+
+        // 5. Apply global filters & render views
         applyFilters();
 
-        console.log('[APP] Platform Ready.');
+        console.log('[APP] Employee Attrition Analytics initialized successfully.');
     }
 
-    // Update Data Quality Badge in Header
-    function updateDataHealthBadge() {
-        const badgeText = document.getElementById('dataQualityText');
-        const audit = cleanDataset.auditReport;
-        if (badgeText && audit) {
-            badgeText.textContent = `🛡️ Data Quality Index: ${audit.qualityScore}%`;
+    // Populate Simulator Employee Dropdown
+    function populateSimulatorDropdown() {
+        const select = document.getElementById('simEmployeeSelect');
+        if (!select) return;
+
+        select.innerHTML = '';
+        const highRiskEmps = processedDataset.filter(r => r.exit_status === 0).slice(0, 50);
+
+        highRiskEmps.forEach(emp => {
+            const risk = DataEngine.predictEmployeeRisk(emp, mlModel);
+            const opt = document.createElement('option');
+            opt.value = emp.employee_id;
+            const displayId = isPIIMasked ? DataEngine.simpleHash(emp.employee_id) : emp.name || emp.employee_id;
+            opt.textContent = `${displayId} (${emp.department} - ${emp.role}) - Base Risk: ${risk.riskPct}%`;
+            select.appendChild(opt);
+        });
+
+        if (highRiskEmps.length > 0) {
+            onSelectSimEmployee(highRiskEmps[0].employee_id);
         }
     }
 
-    // Global Filter Processor
+    // Handle Employee Selection in Simulator
+    function onSelectSimEmployee(empIdVal) {
+        const select = document.getElementById('simEmployeeSelect');
+        const empId = empIdVal || select.value;
+
+        selectedSimEmployee = processedDataset.find(r => r.employee_id === empId || DataEngine.simpleHash(r.employee_id) === empId) || processedDataset[0];
+
+        if (!selectedSimEmployee) return;
+
+        document.getElementById('simEmpDept').textContent = `${selectedSimEmployee.department} / ${selectedSimEmployee.role}`;
+        document.getElementById('simEmpComp').textContent = `${selectedSimEmployee.comp_ratio} (${selectedSimEmployee.comp_ratio < 0.95 ? 'Underpaid' : 'Fair'})`;
+        document.getElementById('simEmpOT').textContent = selectedSimEmployee.overtime_status;
+
+        document.getElementById('sliderComp').value = selectedSimEmployee.comp_ratio;
+        document.getElementById('sliderValComp').textContent = selectedSimEmployee.comp_ratio;
+
+        document.getElementById('sliderOT').value = selectedSimEmployee.overtime_status;
+        document.getElementById('sliderValOT').textContent = selectedSimEmployee.overtime_status === 'No' ? 'No (Reduce Burnout)' : 'Yes (Mandatory Overtime)';
+
+        document.getElementById('sliderWLB').value = selectedSimEmployee.work_life_balance;
+        document.getElementById('sliderValWLB').textContent = `${selectedSimEmployee.work_life_balance} / 5`;
+
+        document.getElementById('sliderSat').value = selectedSimEmployee.job_satisfaction;
+        document.getElementById('sliderValSat').textContent = `${selectedSimEmployee.job_satisfaction} / 5`;
+
+        updateSimulation();
+    }
+
+    // Update Simulator Calculation
+    function updateSimulation() {
+        if (!selectedSimEmployee) return;
+
+        const targetComp = parseFloat(document.getElementById('sliderComp').value);
+        const targetOT = document.getElementById('sliderOT').value;
+        const targetWLB = parseInt(document.getElementById('sliderWLB').value);
+        const targetSat = parseInt(document.getElementById('sliderSat').value);
+
+        document.getElementById('sliderValComp').textContent = targetComp.toFixed(2);
+        document.getElementById('sliderValOT').textContent = targetOT === 'No' ? 'No (Reduce Burnout)' : 'Yes (Mandatory Overtime)';
+        document.getElementById('sliderValWLB').textContent = `${targetWLB} / 5`;
+        document.getElementById('sliderValSat').textContent = `${targetSat} / 5`;
+
+        const adjustments = {
+            comp_ratio: targetComp,
+            overtime_status: targetOT,
+            work_life_balance: targetWLB,
+            job_satisfaction: targetSat
+        };
+
+        const simResult = DataEngine.simulateRetentionIntervention(selectedSimEmployee, adjustments, mlModel);
+
+        document.getElementById('simBaseRiskPct').textContent = `${simResult.baseRiskPct}%`;
+        document.getElementById('simDisplayBaseRisk').textContent = `${simResult.baseRiskPct}%`;
+
+        document.getElementById('simDisplayNewRisk').textContent = `${simResult.simRiskPct}%`;
+        
+        const newBadge = document.getElementById('simDisplayNewBadge');
+        if (simResult.simRiskPct < 30) {
+            newBadge.textContent = 'Retained / Low Risk';
+            newBadge.className = 'badge badge-success';
+        } else if (simResult.simRiskPct < 50) {
+            newBadge.textContent = 'Moderate Risk';
+            newBadge.className = 'badge badge-warning';
+        } else {
+            newBadge.textContent = 'High Attrition Risk';
+            newBadge.className = 'badge badge-danger';
+        }
+
+        document.getElementById('simSavings').textContent = `$${simResult.turnoverSavings.toLocaleString()}`;
+        document.getElementById('simSalaryCost').textContent = `$${simResult.salaryCostDelta.toLocaleString()}`;
+
+        const netROIEl = document.getElementById('simNetROI');
+        netROIEl.textContent = `$${simResult.netROI.toLocaleString()}`;
+        netROIEl.style.color = simResult.netROI >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)';
+
+        const listEl = document.getElementById('interventionRecommendationsList');
+        listEl.innerHTML = '';
+
+        const recs = [];
+        if (targetComp > selectedSimEmployee.comp_ratio) {
+            recs.push(`💰 <strong>Salary Parity Adjustment:</strong> Increase comp ratio from ${selectedSimEmployee.comp_ratio} to ${targetComp.toFixed(2)} (+${Math.round((targetComp - selectedSimEmployee.comp_ratio)*100)}% base pay bump).`);
+        }
+        if (selectedSimEmployee.overtime_status === 'Yes' && targetOT === 'No') {
+            recs.push(`🛑 <strong>Workload Relief:</strong> Transition employee out of mandatory overtime shift to curb acute burnout.`);
+        }
+        if (targetWLB > selectedSimEmployee.work_life_balance) {
+            recs.push(`🏡 <strong>Flexible Work Policy:</strong> Offer hybrid/remote schedule options to improve work-life balance score.`);
+        }
+        if (recs.length === 0) {
+            recs.push(`✅ Current retention parameters are maintained.`);
+        }
+
+        recs.forEach(r => {
+            const div = document.createElement('div');
+            div.style.cssText = 'background:var(--bg-secondary); padding:10px 14px; border-radius:6px; font-size:13px; border:1px solid var(--border-color);';
+            div.innerHTML = r;
+            listEl.appendChild(div);
+        });
+    }
+
+    // Apply Global Filters
     function applyFilters() {
-        if (!cleanDataset || !cleanDataset.cleanOrderItems) return;
+        const deptVal = document.getElementById('filterDepartment').value;
+        const tenureVal = document.getElementById('filterTenureBand').value;
+        const levelVal = document.getElementById('filterJobLevel').value;
+        const perfVal = document.getElementById('filterPerformance').value;
+        const otVal = document.getElementById('filterOvertime').value;
 
-        const dateRange = document.getElementById('filterDateRange').value;
-        const category = document.getElementById('filterCategory').value;
-        const region = document.getElementById('filterRegion').value;
-        const segment = document.getElementById('filterSegment').value;
-        const status = document.getElementById('filterStatus').value;
-        const searchQuery = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
-
-        // Customer Map for Segment filtering
-        const customerMap = new Map(cleanDataset.customers.map(c => [c.customer_id, c]));
-
-        filteredOrderItems = cleanDataset.cleanOrderItems.filter(item => {
-            // Filter 1: Date Range
-            if (dateRange === '2024') {
-                if (!item.order_date.startsWith('2024')) return false;
-            } else if (dateRange === 'YTD') {
-                if (!item.order_date.startsWith('2025')) return false;
-            } else if (dateRange === 'L90D') {
-                if (new Date(item.order_date) < new Date('2025-07-01')) return false;
-            } else if (dateRange === 'L30D') {
-                if (new Date(item.order_date) < new Date('2025-09-01')) return false;
-            }
-
-            // Filter 2: Category
-            if (category !== 'all' && item.category !== category) return false;
-
-            // Filter 3: Region
-            if (region !== 'all' && item.region !== region) return false;
-
-            // Filter 4: Segment
-            if (segment !== 'all') {
-                const cust = customerMap.get(item.customer_id);
-                if (!cust || cust.segment !== segment) return false;
-            }
-
-            // Filter 5: Order Status
-            if (status !== 'all') {
-                if (status === 'Completed' && item.order_status !== 'Completed' && item.order_status !== 'Shipped') return false;
-                if (status === 'Refunded' && item.order_status !== 'Refunded') return false;
-                if (status === 'Processing' && item.order_status !== 'Processing') return false;
-                if (status === 'Cancelled' && item.order_status !== 'Cancelled') return false;
-            }
-
-            // Filter 6: Search Query (Product, Customer ID, Order ID)
-            if (searchQuery) {
-                const matchProd = (item.product_id || '').toLowerCase().includes(searchQuery);
-                const matchOrder = (item.order_id || '').toLowerCase().includes(searchQuery);
-                const matchCust = (item.customer_id || '').toLowerCase().includes(searchQuery);
-                const matchCat = (item.category || '').toLowerCase().includes(searchQuery);
-                if (!matchProd && !matchOrder && !matchCust && !matchCat) return false;
-            }
-
+        filteredDataset = processedDataset.filter(r => {
+            if (deptVal !== 'all' && r.department !== deptVal) return false;
+            if (tenureVal !== 'all' && r.tenure_band !== tenureVal) return false;
+            if (levelVal !== 'all' && r.job_level !== levelVal) return false;
+            if (perfVal !== 'all' && String(r.performance_rating) !== perfVal) return false;
+            if (otVal !== 'all' && r.overtime_status !== otVal) return false;
             return true;
         });
 
-        // Compute Analytical Engine Outputs for Filtered Subset
-        currentKPIs = DataEngine.calculateKPIs(filteredOrderItems);
-        monthlyTrends = DataEngine.calculateMonthlyTrends(filteredOrderItems);
-        cohortMatrix = DataEngine.calculateCohortMatrix(filteredOrderItems, cleanDataset.customers);
-        rfmData = DataEngine.calculateRFMSegments(filteredOrderItems, cleanDataset.customers);
-        productAnalytics = DataEngine.calculateProductAnalytics(filteredOrderItems);
-        regionalAnalytics = DataEngine.calculateRegionalAnalytics(filteredOrderItems);
-        recommendations = DataEngine.generateStrategicRecommendations(currentKPIs, productAnalytics, rfmData, regionalAnalytics);
+        const metrics = DataEngine.calculateDerivedMetrics(filteredDataset);
+        renderKPIs(metrics);
 
-        // Render UI Elements
-        renderKPIs();
-        renderCharts();
-        renderTables();
-        renderAuditLogs();
-        renderRecommendations();
-        runSimulation();
+        renderOverviewCharts(filteredDataset);
+        renderDriverCharts(filteredDataset);
+        renderStatisticalLab(filteredDataset);
+        renderTable();
     }
 
     // Reset Filters
     function resetFilters() {
-        document.getElementById('filterDateRange').value = 'all';
-        document.getElementById('filterCategory').value = 'all';
-        document.getElementById('filterRegion').value = 'all';
-        document.getElementById('filterSegment').value = 'all';
-        document.getElementById('filterStatus').value = 'all';
-        document.getElementById('filterSearch').value = '';
+        document.getElementById('filterDepartment').value = 'all';
+        document.getElementById('filterTenureBand').value = 'all';
+        document.getElementById('filterJobLevel').value = 'all';
+        document.getElementById('filterPerformance').value = 'all';
+        document.getElementById('filterOvertime').value = 'all';
         applyFilters();
     }
 
-    // Render KPI Cards
-    function renderKPIs() {
-        if (!currentKPIs) return;
+    // Render KPIs
+    function renderKPIs(m) {
+        if (!m) return;
 
-        document.getElementById('kpiGrossRev').textContent = `$${currentKPIs.grossRevenue.toLocaleString()}`;
-        document.getElementById('kpiNetRev').textContent = `$${currentKPIs.netRevenue.toLocaleString()}`;
-        document.getElementById('kpiNetRevSub').textContent = `Realized revenue (${currentKPIs.totalUnitsSold.toLocaleString()} units sold)`;
+        document.getElementById('kpiOverallAttrition').textContent = `${m.overallAttritionRate}%`;
+        document.getElementById('kpiOverallSubtext').textContent = `${m.totalDeparted} Departed / ${m.totalHeadcount} Total`;
 
-        document.getElementById('kpiTotalOrders').textContent = currentKPIs.totalOrders.toLocaleString();
-        document.getElementById('kpiOrdersSub').textContent = `${currentKPIs.completedOrders.toLocaleString()} completed, ${currentKPIs.refundedOrders.toLocaleString()} refunded (${currentKPIs.refundRate}%)`;
+        document.getElementById('kpiEarlyTenure').textContent = `${m.earlyTenureAttritionRate}%`;
+        document.getElementById('kpiRegrettable').textContent = `${m.regrettableRate}%`;
+        document.getElementById('kpiRegrettableSubtext').textContent = `${m.regrettableCount} High-Performers Left`;
 
-        document.getElementById('kpiAOV').textContent = `$${currentKPIs.aov.toFixed(2)}`;
-        document.getElementById('kpiMarginPct').textContent = `${currentKPIs.profitMarginPct}%`;
-        document.getElementById('kpiProfitSub').textContent = `Total Profit: $${currentKPIs.totalProfit.toLocaleString()}`;
-
-        document.getElementById('kpiRepeatRate').textContent = `${currentKPIs.repeatCustomerRate}%`;
-        document.getElementById('kpiActiveCustSub').textContent = `${currentKPIs.activeCustomers.toLocaleString()} Active Purchasing Customers`;
+        document.getElementById('kpiTurnoverCost').textContent = `$${(m.totalTurnoverCost / 1000000).toFixed(2)}M`;
     }
 
-    // Destroy and recreate Chart.js instances safely
-    function createOrUpdateChart(canvasId, config) {
-        if (chartInstances[canvasId]) {
-            chartInstances[canvasId].destroy();
-        }
-        const ctx = document.getElementById(canvasId);
-        if (ctx) {
-            chartInstances[canvasId] = new Chart(ctx, config);
-        }
-    }
-
-    // Render All Charts
-    function renderCharts() {
-        // 1. Monthly Revenue & Profit Trend (Tab Overview)
-        const months = monthlyTrends.map(t => t.month);
-        const netRevs = monthlyTrends.map(t => t.netRevenue);
-        const margins = monthlyTrends.map(t => t.marginPct);
-
-        createOrUpdateChart('chartMonthlyTrend', {
-            type: 'line',
-            data: {
-                labels: months,
-                datasets: [
-                    {
-                        label: 'Net Revenue ($)',
-                        data: netRevs,
-                        borderColor: '#6366f1',
-                        backgroundColor: 'rgba(99, 102, 241, 0.15)',
-                        fill: true,
-                        tension: 0.3,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'Profit Margin (%)',
-                        data: margins,
-                        borderColor: '#10b981',
-                        borderDash: [5, 5],
-                        backgroundColor: 'transparent',
-                        tension: 0.3,
-                        yAxisID: 'y1'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#94a3b8' } }
-                },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        ticks: { color: '#94a3b8', callback: v => `$${v / 1000}k` },
-                        grid: { color: '#334155' }
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        ticks: { color: '#10b981', callback: v => `${v}%` },
-                        grid: { drawOnChartArea: false }
-                    }
-                }
-            }
-        });
-
-        // 2. Category Revenue Donut Chart
-        const catLabels = productAnalytics.categorySummary.map(c => c.category);
-        const catRevs = productAnalytics.categorySummary.map(c => c.netRevenue);
-
-        createOrUpdateChart('chartCategoryDonut', {
-            type: 'doughnut',
-            data: {
-                labels: catLabels,
-                datasets: [{
-                    data: catRevs,
-                    backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899', '#64748b']
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right', labels: { color: '#94a3b8' } }
-                }
-            }
-        });
-
-        // 3. Regional Bar Chart (Tab Overview)
-        const regNames = regionalAnalytics.map(r => r.region);
-        const regRevs = regionalAnalytics.map(r => r.netRevenue);
-
-        createOrUpdateChart('chartRegionalBar', {
-            type: 'bar',
-            data: {
-                labels: regNames,
-                datasets: [{
-                    label: 'Net Revenue ($)',
-                    data: regRevs,
-                    backgroundColor: '#06b6d4',
-                    borderRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-                    y: { ticks: { color: '#94a3b8', callback: v => `$${v / 1000}k` }, grid: { color: '#334155' } }
-                }
-            }
-        });
-
-        // 4. RFM Behavioral Segments Chart (Tab Customers)
-        const rfmSummary = rfmData.segmentSummary;
-        const rfmLabels = Object.keys(rfmSummary);
-        const rfmCounts = rfmLabels.map(k => rfmSummary[k].count);
-
-        createOrUpdateChart('chartRFMSegments', {
-            type: 'polarArea',
-            data: {
-                labels: rfmLabels,
-                datasets: [{
-                    data: rfmCounts,
-                    backgroundColor: [
-                        'rgba(16, 185, 129, 0.7)', // Champions
-                        'rgba(99, 102, 241, 0.7)', // Loyal Customers
-                        'rgba(6, 182, 212, 0.7)',  // Potential Loyalists
-                        'rgba(139, 92, 246, 0.7)', // New Customers
-                        'rgba(245, 158, 11, 0.7)', // At-Risk VIPs
-                        'rgba(239, 68, 68, 0.7)',  // Hibernating
-                        'rgba(100, 116, 139, 0.7)' // Needs Attention
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } },
-                scales: { r: { ticks: { display: false }, grid: { color: '#334155' } } }
-            }
-        });
-
-        // 5. Pareto 80/20 Product Chart (Tab Products)
-        const topProds = productAnalytics.topProducts.slice(0, 15);
-        const prodNames = topProds.map(p => p.product_id);
-        const prodRevs = topProds.map(p => p.netRevenue);
-        const paretoCum = topProds.map(p => p.cumulativePct);
-
-        createOrUpdateChart('chartPareto', {
-            type: 'bar',
-            data: {
-                labels: prodNames,
-                datasets: [
-                    {
-                        type: 'line',
-                        label: 'Cumulative Revenue %',
-                        data: paretoCum,
-                        borderColor: '#f59e0b',
-                        borderWidth: 2,
-                        yAxisID: 'y1'
-                    },
-                    {
-                        type: 'bar',
-                        label: 'Net Revenue ($)',
-                        data: prodRevs,
-                        backgroundColor: '#6366f1',
-                        borderRadius: 4,
-                        yAxisID: 'y'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: '#94a3b8' } } },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-                    y: { ticks: { color: '#94a3b8', callback: v => `$${v}` }, grid: { color: '#334155' } },
-                    y1: {
-                        position: 'right',
-                        max: 100,
-                        ticks: { color: '#f59e0b', callback: v => `${v}%` },
-                        grid: { drawOnChartArea: false }
-                    }
-                }
-            }
-        });
-
-        // 6. Category Profit Margin vs Refund Rate Chart (Tab Products)
-        const catList = productAnalytics.categorySummary;
-        createOrUpdateChart('chartCategoryMarginRefund', {
-            type: 'bar',
-            data: {
-                labels: catList.map(c => c.category),
-                datasets: [
-                    {
-                        label: 'Profit Margin %',
-                        data: catList.map(c => c.marginPct),
-                        backgroundColor: '#10b981',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Refund Rate %',
-                        data: catList.map(c => c.refundRate),
-                        backgroundColor: '#ef4444',
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: '#94a3b8' } } },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-                    y: { ticks: { color: '#94a3b8', callback: v => `${v}%` }, grid: { color: '#334155' } }
-                }
-            }
-        });
-
-        // 7. Regional Net Revenue & Profit Comparison (Tab Geography)
-        createOrUpdateChart('chartRegionalProfit', {
-            type: 'bar',
-            data: {
-                labels: regionalAnalytics.map(r => r.region),
-                datasets: [
-                    {
-                        label: 'Net Revenue ($)',
-                        data: regionalAnalytics.map(r => r.netRevenue),
-                        backgroundColor: '#6366f1',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Gross Profit ($)',
-                        data: regionalAnalytics.map(r => r.profit),
-                        backgroundColor: '#10b981',
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: '#94a3b8' } } },
-                scales: {
-                    x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-                    y: { ticks: { color: '#94a3b8', callback: v => `$${v / 1000}k` }, grid: { color: '#334155' } }
-                }
-            }
-        });
-    }
-
-    // Render Dynamic Tables & Summaries
-    function renderTables() {
-        // 1. Executive Summary Box (Tab Overview)
-        const summaryBox = document.getElementById('executiveSummaryBox');
-        if (summaryBox && currentKPIs) {
-            summaryBox.innerHTML = `
-                <div class="summary-item">
-                    <h4>💵 Revenue & Cashflow Performance</h4>
-                    <p>Generated <strong>$${currentKPIs.grossRevenue.toLocaleString()}</strong> in gross orders, yielding <strong>$${currentKPIs.netRevenue.toLocaleString()}</strong> in net realized sales after discounts and <strong>$${(currentKPIs.grossRevenue - currentKPIs.netRevenue).toLocaleString()}</strong> in refunds.</p>
-                </div>
-                <div class="summary-item">
-                    <h4>📈 Profitability & Unit Economics</h4>
-                    <p>Delivered an overall gross profit margin of <strong>${currentKPIs.profitMarginPct}%</strong> ($${currentKPIs.totalProfit.toLocaleString()}) with an Average Order Value (AOV) of <strong>$${currentKPIs.aov.toFixed(2)}</strong>.</p>
-                </div>
-                <div class="summary-item">
-                    <h4>🔁 Customer Loyalty & Retention</h4>
-                    <p>Active customer base stands at <strong>${currentKPIs.activeCustomers.toLocaleString()}</strong> buyers with a repeat customer rate of <strong>${currentKPIs.repeatCustomerRate}%</strong>.</p>
-                </div>
-            `;
-        }
-
-        // 2. RFM Segment Table (Tab Customers)
-        const rfmTbody = document.querySelector('#rfmSegmentTable tbody');
-        if (rfmTbody) {
-            const summary = rfmData.segmentSummary;
-            rfmTbody.innerHTML = Object.keys(summary).map(segName => {
-                const s = summary[segName];
-                let actionText = 'Maintain engagement';
-                if (segName === 'Champions') actionText = 'VIP Rewards & Early Access';
-                else if (segName === 'At-Risk VIPs') actionText = '🚨 Urgent Win-Back Offer';
-                else if (segName === 'New Customers') actionText = 'Welcome Email Nurture';
-                else if (segName === 'Hibernating') actionText = 'Re-activation Promo';
-
-                return `
-                    <tr>
-                        <td><strong>${segName}</strong></td>
-                        <td>${s.count}</td>
-                        <td>$${s.totalSpend.toLocaleString()}</td>
-                        <td>$${s.avgSpend}</td>
-                        <td><span class="card-badge">${actionText}</span></td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // 3. Cohort Retention Heatmap (Tab Customers)
-        const cohortTbody = document.querySelector('#cohortHeatmapTable tbody');
-        if (cohortTbody) {
-            cohortTbody.innerHTML = cohortMatrix.map(c => {
-                const cells = c.percentages.map((pct, monthIdx) => {
-                    let cellClass = 'cohort-cell-empty';
-                    if (monthIdx === 0) cellClass = 'cohort-cell-100';
-                    else if (pct >= 30) cellClass = 'cohort-cell-high';
-                    else if (pct >= 18) cellClass = 'cohort-cell-mid';
-                    else if (pct >= 10) cellClass = 'cohort-cell-low';
-                    else if (pct > 0) cellClass = 'cohort-cell-vlow';
-
-                    return `<td class="${cellClass}">${pct > 0 ? pct.toFixed(1) + '%' : '-'}</td>`;
-                }).join('');
-
-                return `
-                    <tr>
-                        <td><strong>${c.cohortMonth}</strong></td>
-                        <td><strong>${c.cohortSize}</strong></td>
-                        ${cells}
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // 4. High-Value Customer Leaderboard (Tab Customers)
-        const custTbody = document.querySelector('#customerLeaderboardTable tbody');
-        if (custTbody) {
-            const topCusts = rfmData.customerList.slice(0, 15);
-            custTbody.innerHTML = topCusts.map(c => {
-                let badgeClass = 'badge-secondary';
-                if (c.segment === 'Champions') badgeClass = 'badge-success';
-                else if (c.segment === 'At-Risk VIPs') badgeClass = 'badge-danger';
-                else if (c.segment === 'Loyal Customers') badgeClass = 'badge-primary';
-
-                return `
-                    <tr>
-                        <td><strong>${c.name}</strong><br><small style="color:var(--text-muted)">${c.customer_id}</small></td>
-                        <td>${c.region}</td>
-                        <td>${c.recencyDays} days ago</td>
-                        <td>${c.frequency} orders</td>
-                        <td><strong>$${c.monetary.toLocaleString()}</strong></td>
-                        <td>${c.rScore}-${c.fScore}-${c.mScore}</td>
-                        <td><span class="card-badge ${badgeClass}">${c.segment}</span></td>
-                        <td>${c.favoriteCategory}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // 5. Product Performance Leaderboard (Tab Products)
-        const prodTbody = document.querySelector('#productLeaderboardTable tbody');
-        if (prodTbody) {
-            const prods = productAnalytics.topProducts.slice(0, 20);
-            prodTbody.innerHTML = prods.map(p => `
-                <tr>
-                    <td><strong>${p.product_id}</strong></td>
-                    <td>${p.category}</td>
-                    <td>${p.unitsSold}</td>
-                    <td>$${p.grossRevenue.toLocaleString()}</td>
-                    <td><strong>$${p.netRevenue.toLocaleString()}</strong></td>
-                    <td>$${p.profit.toLocaleString()}</td>
-                    <td><span class="card-badge ${p.marginPct > 40 ? 'badge-success' : 'badge-warning'}">${p.marginPct}%</span></td>
-                    <td><span class="card-badge ${p.refundRate > 10 ? 'badge-danger' : 'badge-secondary'}">${p.refundRate}%</span></td>
-                    <td>${p.cumulativePct}%</td>
-                </tr>
-            `).join('');
-        }
-
-        // 6. Regional Directory Table (Tab Geography)
-        const regTbody = document.querySelector('#regionalDirectoryTable tbody');
-        if (regTbody) {
-            regTbody.innerHTML = regionalAnalytics.map(r => `
-                <tr>
-                    <td><strong>${r.region}</strong></td>
-                    <td>$${r.netRevenue.toLocaleString()}</td>
-                    <td><span class="card-badge badge-success">${r.marginPct}%</span></td>
-                    <td>$${r.aov.toFixed(2)}</td>
-                    <td>${r.customerCount}</td>
-                    <td>${r.topState}</td>
-                </tr>
-            `).join('');
-        }
-    }
-
-    // Render Data Quality Audit Logs
-    function renderAuditLogs() {
-        const list = document.getElementById('auditLogList');
-        const scoreBadge = document.getElementById('auditHealthScore');
-        if (!list || !cleanDataset || !cleanDataset.auditReport) return;
-
-        const audit = cleanDataset.auditReport;
-        if (scoreBadge) scoreBadge.textContent = `Health Index: ${audit.qualityScore}%`;
-
-        list.innerHTML = audit.logs.map(log => `<li>${log}</li>`).join('');
-    }
-
-    // Render Strategic Recommendations
-    function renderRecommendations() {
-        const container = document.getElementById('recommendationsList');
-        if (!container) return;
-
-        if (!recommendations || recommendations.length === 0) {
-            container.innerHTML = '<p class="section-desc">All operating metrics are performing within normal parameters.</p>';
-            return;
-        }
-
-        container.innerHTML = recommendations.map(rec => `
-            <div class="rec-card">
-                <div class="rec-header">
-                    <span class="rec-title">${rec.title}</span>
-                    <span class="card-badge ${rec.badgeClass}">${rec.priority}</span>
-                </div>
-                <div class="rec-insight">${rec.insight}</div>
-                <div class="rec-action">💡 <strong>Actionable Step:</strong> ${rec.actionableStep}</div>
-            </div>
-        `).join('');
-    }
-
-    // Interactive Business What-If Simulator
-    function runSimulation() {
-        if (!currentKPIs) return;
-
-        const priceVal = parseFloat(document.getElementById('sliderPrice').value);
-        const refundVal = parseFloat(document.getElementById('sliderRefund').value);
-        const retentionVal = parseFloat(document.getElementById('sliderRetention').value);
-
-        document.getElementById('valSliderPrice').textContent = `${priceVal > 0 ? '+' : ''}${priceVal}%`;
-        document.getElementById('valSliderRefund').textContent = `${refundVal}%`;
-        document.getElementById('valSliderRetention').textContent = `+${retentionVal}%`;
-
-        const simResult = DataEngine.simulateBusinessScenario(currentKPIs, {
-            priceChangePct: priceVal,
-            refundReductionPct: refundVal,
-            retentionBoostPct: retentionVal
-        });
-
-        document.getElementById('simProjNetRev').textContent = `$${simResult.projectedNetRevenue.toLocaleString()}`;
-        document.getElementById('simDiffNetRev').textContent = `${simResult.netRevenueLift >= 0 ? '+' : ''}$${simResult.netRevenueLift.toLocaleString()}`;
-
-        document.getElementById('simProjProfit').textContent = `$${simResult.projectedProfit.toLocaleString()}`;
-        document.getElementById('simDiffProfit').textContent = `${simResult.profitLift >= 0 ? '+' : ''}$${simResult.profitLift.toLocaleString()}`;
-
-        document.getElementById('simProjMargin').textContent = `${simResult.projectedMarginPct}%`;
-        document.getElementById('simDiffMargin').textContent = `${simResult.marginPctLift >= 0 ? '+' : ''}${simResult.marginPctLift.toFixed(1)}%`;
-    }
-
-    // Switch Tab Pane Navigation
-    function switchTab(tabPaneId, btnElement) {
+    // Tab Switching
+    function switchTab(tabId) {
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
 
-        if (btnElement) btnElement.classList.add('active');
-        const targetPane = document.getElementById(tabPaneId);
-        if (targetPane) targetPane.classList.add('active');
+        event.target.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
 
-        // Trigger chart resize update
-        setTimeout(() => {
-            Object.values(chartInstances).forEach(chart => {
-                if (chart) chart.resize();
+    // Toggle PII Masking
+    function toggleAnonymization() {
+        isPIIMasked = !isPIIMasked;
+        const badge = document.getElementById('privacyStatusBadge');
+        const text = document.getElementById('privacyStatusText');
+
+        if (isPIIMasked) {
+            badge.className = 'privacy-indicator-badge';
+            text.textContent = '🛡️ PII Masked & Hash Secured';
+        } else {
+            badge.className = 'privacy-indicator-badge unmasked';
+            text.textContent = '⚠️ Unmasked PII (Sensitive View)';
+        }
+
+        populateSimulatorDropdown();
+        renderTable();
+    }
+
+    // Test Hash ID Tool
+    function testHashId() {
+        const val = document.getElementById('hashInputId').value;
+        const hash = DataEngine.simpleHash(val);
+        document.getElementById('hashOutputResult').textContent = hash;
+    }
+
+    // Chart Renderer Helper
+    function createOrUpdateChart(canvasId, type, data, options) {
+        if (chartInstances[canvasId]) {
+            chartInstances[canvasId].destroy();
+        }
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        chartInstances[canvasId] = new Chart(ctx, { type, data, options });
+    }
+
+    // Render Executive Overview Charts
+    function renderOverviewCharts(data) {
+        // Monthly Trend
+        const months = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+        const volCounts = months.map(m => data.filter(r => r.exit_status === 1 && r.exit_month === m && r.exit_type === 'Voluntary').length);
+        const involCounts = months.map(m => data.filter(r => r.exit_status === 1 && r.exit_month === m && r.exit_type === 'Involuntary').length);
+
+        createOrUpdateChart('chartMonthlyTrend', 'line', {
+            labels: months,
+            datasets: [
+                { label: 'Voluntary Exits', data: volCounts, borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.15)', fill: true, tension: 0.3 },
+                { label: 'Involuntary Exits', data: involCounts, borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.15)', fill: true, tension: 0.3 }
+            ]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af' } } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } });
+
+        // Department Attrition Bar
+        const depts = DataEngine.DEPARTMENTS;
+        const deptRates = depts.map(d => {
+            const group = data.filter(r => r.department === d);
+            const dep = group.filter(r => r.exit_status === 1).length;
+            return group.length > 0 ? parseFloat(((dep / group.length) * 100).toFixed(1)) : 0;
+        });
+
+        createOrUpdateChart('chartDeptAttrition', 'bar', {
+            labels: depts,
+            datasets: [{
+                label: 'Attrition Rate (%)',
+                data: deptRates,
+                backgroundColor: deptRates.map(r => r > 20 ? 'rgba(244, 63, 94, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                borderRadius: 6
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } });
+
+        // Tenure Curve
+        const bands = ['<6 Months', '6-12 Months', '1-2 Years', '2-5 Years', '5+ Years'];
+        const bandRates = bands.map(b => {
+            const group = data.filter(r => r.tenure_band === b);
+            const dep = group.filter(r => r.exit_status === 1).length;
+            return group.length > 0 ? parseFloat(((dep / group.length) * 100).toFixed(1)) : 0;
+        });
+
+        createOrUpdateChart('chartTenureCurve', 'bar', {
+            labels: bands,
+            datasets: [{
+                label: 'Turnover % by Tenure',
+                data: bandRates,
+                backgroundColor: 'rgba(168, 85, 247, 0.8)',
+                borderRadius: 6
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } });
+
+        // Exit Type Doughnut
+        const volTotal = data.filter(r => r.exit_status === 1 && r.exit_type === 'Voluntary').length;
+        const involTotal = data.filter(r => r.exit_status === 1 && r.exit_type === 'Involuntary').length;
+
+        createOrUpdateChart('chartExitType', 'doughnut', {
+            labels: ['Voluntary Resignation', 'Involuntary Termination'],
+            datasets: [{
+                data: [volTotal, involTotal],
+                backgroundColor: ['#38bdf8', '#f43f5e'],
+                borderWidth: 0
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af' } } } });
+    }
+
+    // Render Driver Charts
+    function renderDriverCharts(data) {
+        const otYes = data.filter(r => r.overtime_status === 'Yes');
+        const otNo = data.filter(r => r.overtime_status === 'No');
+
+        const rateOTYes = otYes.length > 0 ? ((otYes.filter(r => r.exit_status === 1).length / otYes.length) * 100).toFixed(1) : 0;
+        const rateOTNo = otNo.length > 0 ? ((otNo.filter(r => r.exit_status === 1).length / otNo.length) * 100).toFixed(1) : 0;
+
+        createOrUpdateChart('chartOvertimeBurnout', 'bar', {
+            labels: ['Overtime Required (Yes)', 'No Overtime (No)'],
+            datasets: [{
+                label: 'Attrition Rate (%)',
+                data: [rateOTYes, rateOTNo],
+                backgroundColor: ['rgba(244, 63, 94, 0.85)', 'rgba(16, 185, 129, 0.85)'],
+                borderRadius: 8
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } });
+
+        const activeGroup = data.filter(r => r.exit_status === 0);
+        const departedGroup = data.filter(r => r.exit_status === 1);
+
+        const avgScore = (grp, key) => grp.length > 0 ? grp.reduce((s, r) => s + r[key], 0) / grp.length : 0;
+
+        createOrUpdateChart('chartSatisfactionRadar', 'radar', {
+            labels: ['Job Satisfaction', 'Work Environment', 'Work-Life Balance'],
+            datasets: [
+                { label: 'Active Employees', data: [avgScore(activeGroup, 'job_satisfaction'), avgScore(activeGroup, 'environment_satisfaction'), avgScore(activeGroup, 'work_life_balance')], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)' },
+                { label: 'Departed Employees', data: [avgScore(departedGroup, 'job_satisfaction'), avgScore(departedGroup, 'environment_satisfaction'), avgScore(departedGroup, 'work_life_balance')], borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.2)' }
+            ]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af' } } }, scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, pointLabels: { color: '#9ca3af' } } } });
+
+        const scatterActive = activeGroup.slice(0, 150).map(r => ({ x: r.tenure_years, y: r.comp_ratio }));
+        const scatterDeparted = departedGroup.slice(0, 150).map(r => ({ x: r.tenure_years, y: r.comp_ratio }));
+
+        createOrUpdateChart('chartCompScatter', 'scatter', {
+            datasets: [
+                { label: 'Active', data: scatterActive, backgroundColor: 'rgba(16, 185, 129, 0.6)' },
+                { label: 'Departed', data: scatterDeparted, backgroundColor: 'rgba(244, 63, 94, 0.7)' }
+            ]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af' } } }, scales: { x: { title: { display: true, text: 'Tenure (Years)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } }, y: { title: { display: true, text: 'Comp Ratio (Pay Parity)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } } } });
+
+        const promYears = ['0-1 Yr', '1-2 Yrs', '2-3 Yrs', '3-4 Yrs', '4+ Yrs'];
+        const highPerfDepartures = promYears.map((_, idx) => {
+            return data.filter(r => r.exit_status === 1 && r.performance_rating >= 4 && r.years_since_last_promotion >= idx && r.years_since_last_promotion < idx + 1).length;
+        });
+
+        createOrUpdateChart('chartPromotionStagnation', 'bar', {
+            labels: promYears,
+            datasets: [{
+                label: 'High Performer Departures',
+                data: highPerfDepartures,
+                backgroundColor: 'rgba(245, 158, 11, 0.8)',
+                borderRadius: 6
+            }]
+        }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } });
+    }
+
+    // Render Statistical & ML Lab View
+    function renderStatisticalLab(data) {
+        const chiFeatures = ['department', 'overtime_status', 'tenure_band', 'job_level'];
+        const tbodyChi = document.getElementById('tableChiSquare');
+        tbodyChi.innerHTML = '';
+
+        chiFeatures.forEach(feat => {
+            const res = DataEngine.runChiSquareTest(data, feat);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${feat}</strong></td>
+                <td>${res.chiSquare}</td>
+                <td>${res.df}</td>
+                <td>${res.pValue < 0.01 ? '< 0.01' : res.pValue}</td>
+                <td>${res.cramersV}</td>
+                <td><span class="stat-pill ${res.isSignificant ? 'sig' : 'non-sig'}">${res.isSignificant ? 'Statistically Significant' : 'Not Significant'}</span></td>
+            `;
+            tbodyChi.appendChild(tr);
+        });
+
+        const numericKeys = ['avg_monthly_hours', 'comp_ratio', 'years_since_last_promotion', 'commute_distance_km'];
+        const tbodyT = document.getElementById('tableTTest');
+        tbodyT.innerHTML = '';
+
+        numericKeys.forEach(key => {
+            const res = DataEngine.runWelchTTest(data, key);
+            if (!res) return;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${key}</strong></td>
+                <td>${res.meanActive}</td>
+                <td>${res.meanDeparted}</td>
+                <td style="color:${res.diff > 0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}">${res.diff > 0 ? '+' : ''}${res.diff}</td>
+                <td>${res.tStat}</td>
+                <td><span class="stat-pill ${res.isSignificant ? 'sig' : 'non-sig'}">${res.pValue < 0.01 ? '< 0.01' : res.pValue}</span></td>
+            `;
+            tbodyT.appendChild(tr);
+        });
+
+        if (mlModel) {
+            document.getElementById('mlAccuracy').textContent = `${mlModel.accuracy}%`;
+            document.getElementById('mlPrecision').textContent = `${mlModel.precision}%`;
+            document.getElementById('mlRecall').textContent = `${mlModel.recall}%`;
+            document.getElementById('mlF1').textContent = mlModel.f1Score;
+            document.getElementById('mlAUC').textContent = mlModel.auc;
+
+            const tbodyReg = document.getElementById('tableRegressionCoeffs');
+            tbodyReg.innerHTML = '';
+
+            mlModel.coefficients.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${c.feature}</strong></td>
+                    <td>${c.coefficient}</td>
+                    <td><strong style="color:${c.oddsRatio > 1.0 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}">${c.oddsRatio}x</strong></td>
+                    <td>${c.zScore}</td>
+                    <td>${c.pValue < 0.01 ? '< 0.01' : c.pValue}</td>
+                    <td><span class="badge ${c.oddsRatio > 1.0 ? 'badge-danger' : 'badge-success'}">${c.impact}</span></td>
+                `;
+                tbodyReg.appendChild(tr);
             });
-        }, 50);
+
+            const rocLabels = mlModel.rocPoints.map(p => p.fpr);
+            const rocTPR = mlModel.rocPoints.map(p => p.tpr);
+
+            createOrUpdateChart('chartROC', 'line', {
+                labels: rocLabels,
+                datasets: [
+                    { label: 'Logistic Regression Model', data: rocTPR, borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true },
+                    { label: 'Random Classifier (AUC=0.5)', data: rocLabels, borderColor: '#6b7280', borderDash: [4, 4], fill: false }
+                ]
+            }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: 'False Positive Rate (FPR)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } }, y: { title: { display: true, text: 'True Positive Rate (TPR)', color: '#9ca3af' }, ticks: { color: '#9ca3af' } } } });
+        }
     }
 
-    // Modal Control Functions
-    function openUploadModal() {
-        document.getElementById('uploadModal').classList.add('active');
-    }
+    // Render Workforce Master Explorer Table
+    function renderTable() {
+        const tbody = document.getElementById('tableMasterExplorer');
+        if (!tbody) return;
 
-    function closeUploadModal() {
-        document.getElementById('uploadModal').classList.remove('active');
-    }
+        const search = (document.getElementById('tableSearchInput')?.value || '').toLowerCase();
+        tbody.innerHTML = '';
 
-    // Handle File Upload (PapaParse)
-    function handleFileUpload(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+        const displayRows = filteredDataset.filter(r => {
+            if (!search) return true;
+            return r.department.toLowerCase().includes(search) || 
+                   r.role.toLowerCase().includes(search) || 
+                   r.employee_id.toLowerCase().includes(search);
+        }).slice(0, 100);
 
-        Papa.parse(file, {
-            header: true,
-            dynamicTyping: true,
-            skipEmptyLines: true,
-            complete: function(results) {
-                if (results.data && results.data.length > 0) {
-                    console.log(`[CSV Upload] Parsed ${results.data.length} rows successfully.`);
-                    
-                    // Simple wrapper to convert uploaded CSV into internal order line items format
-                    const parsedItems = results.data.map((row, idx) => ({
-                        item_id: row.item_id || `CSV-${idx + 1}`,
-                        order_id: String(row.order_id || `ORD-CSV-${idx + 1}`),
-                        customer_id: String(row.customer_id || `CUST-CSV-${(idx % 50) + 1}`),
-                        product_id: String(row.product_id || `PROD-CSV-${(idx % 20) + 1}`),
-                        category: row.category || 'Electronics',
-                        quantity: Number(row.quantity || 1),
-                        unit_price: Number(row.unit_price || row.gross_amount || 49.99),
-                        unit_cost: Number(row.unit_cost || (row.unit_price ? row.unit_price * 0.5 : 25.00)),
-                        discount_pct: Number(row.discount_pct || 0),
-                        discount_amount: Number(row.discount_amount || 0),
-                        gross_amount: Number(row.gross_amount || row.unit_price || 49.99),
-                        net_amount: Number(row.net_amount || row.gross_amount || 49.99),
-                        total_cost: Number(row.total_cost || 25.00),
-                        gross_profit: Number(row.gross_profit || (row.net_amount ? row.net_amount - 25.00 : 24.99)),
-                        order_status: row.order_status || 'Completed',
-                        refund_amount: Number(row.refund_amount || 0),
-                        order_date: row.order_date || '2025-01-15',
-                        order_month: (row.order_date || '2025-01-15').substring(0, 7),
-                        region: row.region || 'North America',
-                        state: row.state || 'California',
-                        country: row.country || 'USA / Canada',
-                        ship_mode: row.ship_mode || 'Standard Class',
-                        payment_method: row.payment_method || 'Credit Card'
-                    }));
+        displayRows.forEach(r => {
+            const risk = DataEngine.predictEmployeeRisk(r, mlModel);
+            const displayId = isPIIMasked ? DataEngine.simpleHash(r.employee_id) : r.name || r.employee_id;
 
-                    cleanDataset.cleanOrderItems = parsedItems;
-                    applyFilters();
-                    closeUploadModal();
-                    alert(`Successfully imported ${parsedItems.length} records into dashboard!`);
-                }
-            },
-            error: function(err) {
-                alert('Error parsing CSV file: ' + err.message);
-            }
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code>${displayId}</code></td>
+                <td>${r.department}</td>
+                <td>${r.role} (${r.job_level})</td>
+                <td>${r.tenure_years} yrs (${r.tenure_band})</td>
+                <td>$${r.monthly_salary.toLocaleString()}/mo</td>
+                <td><strong style="color:${r.comp_ratio < 0.9 ? 'var(--accent-rose)' : 'var(--text-main)'}">${r.comp_ratio}</strong></td>
+                <td>${r.performance_rating} / 5</td>
+                <td>${r.overtime_status === 'Yes' ? '<span class="badge badge-danger">Overtime</span>' : '<span class="badge badge-success">Normal</span>'}</td>
+                <td>${r.exit_status === 1 ? `<span class="badge badge-danger">Departed (${r.exit_type})</span>` : '<span class="badge badge-success">Active</span>'}</td>
+                <td><span class="badge ${risk.badgeClass}">${risk.riskPct}% (${risk.tier})</span></td>
+            `;
+            tbody.appendChild(tr);
         });
     }
 
-    // Export Filtered Dataset to CSV
+    // Export Filtered CSV
     function exportReportCSV() {
-        if (!filteredOrderItems || filteredOrderItems.length === 0) return;
-
-        const csvString = Papa.unparse(filteredOrderItems);
-        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
+        const csv = Papa.unparse(filteredDataset);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `Ecommerce_Sales_Insights_Export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', `Employee_Attrition_Insights_${new Date().toISOString().slice(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     }
 
-    // Print Executive Summary
-    function printExecutiveSummary() {
-        window.print();
+    // Modal Handling
+    function openUploadModal() { document.getElementById('uploadModal').classList.add('active'); }
+    function closeUploadModal() { document.getElementById('uploadModal').classList.remove('active'); }
+
+    function handleCSVUpload() {
+        const fileInput = document.getElementById('csvFileInput');
+        if (!fileInput.files.length) {
+            alert('Please select a CSV file first.');
+            return;
+        }
+
+        Papa.parse(fileInput.files[0], {
+            header: true,
+            dynamicTyping: true,
+            complete: function(results) {
+                const cleanResult = DataEngine.cleanAndValidateRecords(results.data);
+                processedDataset = cleanResult.cleanRecords;
+                mlModel = DataEngine.fitLogisticRegression(processedDataset);
+                populateSimulatorDropdown();
+                applyFilters();
+                closeUploadModal();
+                alert(`Successfully parsed and loaded ${processedDataset.length} workforce records!`);
+            }
+        });
     }
 
-    // Run init on DOM load
     document.addEventListener('DOMContentLoaded', init);
 
     return {
-        init,
         applyFilters,
         resetFilters,
         switchTab,
-        runSimulation,
+        toggleAnonymization,
+        testHashId,
+        onSelectSimEmployee,
+        updateSimulation,
+        renderTable,
+        exportReportCSV,
         openUploadModal,
         closeUploadModal,
-        handleFileUpload,
-        exportReportCSV,
-        printExecutiveSummary
+        handleCSVUpload
     };
 })();
